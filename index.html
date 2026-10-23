@@ -3,9 +3,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Your Clock. Your Rules.</title>
-
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
   <style>
@@ -14,18 +13,18 @@
     body {
       margin: 0;
       min-height: 100vh;
-      background: #101820;
-      color: #fff;
-      font-family: Arial, sans-serif;
+      padding: 24px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
+      background: #101820;
+      color: white;
+      font-family: Arial, sans-serif;
       text-align: center;
-      padding: 24px;
     }
 
-    .status {
+    #status {
       position: absolute;
       top: 24px;
       display: flex;
@@ -33,25 +32,17 @@
       gap: 10px;
       font-size: 13px;
       letter-spacing: 1px;
-      color: #ff6b6b;
     }
 
-    .dot {
+    #dot {
       width: 9px;
       height: 9px;
-      border-radius: 50%;
       background: #e53935;
+      border-radius: 50%;
     }
 
-    h1 {
-      font-size: clamp(25px, 5vw, 36px);
-      margin-bottom: 8px;
-    }
-
-    .subtitle {
-      color: #a7b5c2;
-      margin-bottom: 42px;
-    }
+    h1 { font-size: clamp(25px, 5vw, 36px); }
+    .subtitle { color: #a7b5c2; margin-bottom: 38px; }
 
     #trigger {
       width: 220px;
@@ -82,29 +73,27 @@
     }
 
     #feedback {
-      color: #a7b5c2;
-      font-size: 14px;
       margin-top: 24px;
       min-height: 20px;
+      color: #a7b5c2;
+      font-size: 14px;
     }
   </style>
 </head>
-
 <body>
-  <div class="status">
-    <span class="dot" id="dot"></span>
-    <span id="statusText">CONNECTING TO CLOCK...</span>
+  <div id="status">
+    <span id="dot"></span>
+    <span id="statusText">CONNECTING TO MQTT...</span>
   </div>
 
   <h1>YOUR CLOCK. YOUR RULES.</h1>
   <div class="subtitle">Remote alarm control</div>
 
   <button id="trigger" disabled>
-    ⏰<br><br>
-    TRIGGER<br>ALARM
+    ⏰<br><br>TRIGGER<br>ALARM
   </button>
 
-  <div id="feedback">Connecting to MQTT...</div>
+  <div id="feedback">Connecting to broker...</div>
 
   <script>
     const BROKER = "wss://broker.hivemq.com:8884/mqtt";
@@ -123,59 +112,62 @@
       reconnectPeriod: 3000
     });
 
-    function setStatus(connected, message) {
-      statusText.textContent = message;
+    function setStatus(connected, text) {
+      statusText.textContent = text;
       statusText.style.color = connected ? "#72f1b8" : "#ff6b6b";
       dot.style.background = connected ? "#72f1b8" : "#e53935";
       button.disabled = !connected;
     }
 
     client.on("connect", () => {
+      console.log("[MQTT] Connected:", BROKER);
       setStatus(true, "MQTT CONNECTED");
       feedback.textContent = "Ready to control your clock.";
     });
 
     client.on("reconnect", () => {
+      console.log("[MQTT] Reconnecting...");
       setStatus(false, "RECONNECTING...");
     });
 
     client.on("offline", () => {
-      setStatus(false, "CLOCK DISCONNECTED");
+      console.warn("[MQTT] Offline");
+      setStatus(false, "MQTT DISCONNECTED");
     });
 
     client.on("close", () => {
-      setStatus(false, "CLOCK DISCONNECTED");
+      console.warn("[MQTT] Connection closed");
+      setStatus(false, "MQTT DISCONNECTED");
     });
 
     client.on("error", error => {
-      console.error("MQTT error:", error);
+      console.error("[MQTT] Error:", error);
       setStatus(false, "CONNECTION ERROR");
     });
 
     button.addEventListener("click", () => {
-      if (!client.connected) return;
+      if (!client.connected) {
+        console.warn("[MQTT] Not connected");
+        return;
+      }
+
+      const payload = JSON.stringify({ trigger: true });
+      console.log("[MQTT] Publishing:", TOPIC, payload);
 
       button.disabled = true;
-      feedback.textContent = "Sending alarm command...";
+      feedback.textContent = "Sending trigger...";
 
-      const payload = JSON.stringify({
-        trigger: true
-      });
+      client.publish(TOPIC, payload, { qos: 0, retain: false }, error => {
+        button.disabled = !client.connected;
 
-      client.publish(
-        TOPIC,
-        payload,
-        { qos: 0, retain: false },
-        error => {
-          button.disabled = !client.connected;
-
-          if (error) {
-            feedback.textContent = "Failed to send command.";
-          } else {
-            feedback.textContent = "Command published to MQTT.";
-          }
+        if (error) {
+          console.error("[MQTT] Publish error:", error);
+          feedback.textContent = "Failed to publish command.";
+        } else {
+          console.log("[MQTT] Publish completed");
+          feedback.textContent = "Alarm command sent.";
         }
-      );
+      });
     });
   </script>
 </body>
