@@ -3,731 +3,180 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Clock Control</title>
-  <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.4/dist/mqtt.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Clock. Your Rules.</title>
+
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
   <style>
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      padding: 24px 16px;
-      background: #111216;
-      color: #f4f4f5;
+      min-height: 100vh;
+      background: #101820;
+      color: #fff;
       font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
     }
 
-    main { max-width: 540px; margin: auto; }
-    h2 { margin-top: 0; }
-
     .status {
+      position: absolute;
+      top: 24px;
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin: 18px 0;
+      gap: 10px;
       font-size: 13px;
-      color: #d4d4d8;
+      letter-spacing: 1px;
+      color: #ff6b6b;
     }
 
     .dot {
       width: 9px;
       height: 9px;
-      flex-shrink: 0;
       border-radius: 50%;
-      background: #777985;
+      background: #e53935;
     }
 
-    .dot.online { background: #22c55e; }
-    .dot.offline { background: #777985; }
-
-    .optional-fields {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 14px;
+    h1 {
+      font-size: clamp(25px, 5vw, 36px);
+      margin-bottom: 8px;
     }
 
-    .panel {
-      min-width: 0;
-      background: #1b1c22;
-      border: 1px solid #303137;
-      border-radius: 12px;
-      padding: 16px;
+    .subtitle {
+      color: #a7b5c2;
+      margin-bottom: 42px;
     }
 
-    label {
-      display: block;
-      margin-bottom: 10px;
-      font-size: 14px;
-      font-weight: 600;
-    }
-
-    .optional {
-      color: #a1a1aa;
-      font-size: 12px;
-      font-weight: normal;
-    }
-
-    .matrix {
-      display: grid;
-      grid-template-columns: repeat(8, 15px);
-      gap: 5px;
-      width: fit-content;
-      margin: auto;
-    }
-
-    .led {
-      width: 15px;
-      height: 15px;
-      padding: 0;
-      border: 0;
+    #trigger {
+      width: 220px;
+      height: 220px;
+      border: none;
       border-radius: 50%;
-      background: #41424b;
-      cursor: pointer;
-      touch-action: manipulation;
-    }
-
-    .led.on {
-      background: #ef4444;
-      box-shadow: 0 0 8px #ef444466;
-    }
-
-    textarea {
-      display: block;
-      width: 100%;
-      height: 85px;
-      resize: vertical;
-      background: #111216;
+      background: #e53935;
       color: white;
-      border: 1px solid #383941;
-      border-radius: 8px;
-      padding: 11px;
-      font: inherit;
-      font-size: 14px;
-    }
-
-    button { font: inherit; }
-
-    .trigger {
-      width: 100%;
-      margin-top: 14px;
-      padding: 14px;
-      background: #ef4444;
-      color: white;
-      border: 0;
-      border-radius: 9px;
-      font-size: 15px;
+      font-size: 21px;
       font-weight: bold;
       cursor: pointer;
-      transition: background .2s, transform .2s;
+      box-shadow: 0 10px 35px #e5393533;
+      transition: transform .15s, background .15s;
     }
 
-    .trigger:hover { background: #dc2626; }
-    .trigger:active { transform: scale(.98); }
+    #trigger:hover:not(:disabled) {
+      background: #f44336;
+      transform: scale(1.03);
+    }
 
-    .trigger:disabled {
-      opacity: .5;
+    #trigger:active:not(:disabled) {
+      transform: scale(.96);
+    }
+
+    #trigger:disabled {
+      opacity: .4;
       cursor: not-allowed;
     }
 
-    #result {
-      margin-top: 12px;
-      font-size: 12px;
-      color: #a1a1aa;
-      overflow-wrap: anywhere;
-    }
-
-    /* Confirmation and result dialogs */
-    .overlay {
-      position: fixed;
-      inset: 0;
-      z-index: 1000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      background: rgba(0, 0, 0, .78);
-      backdrop-filter: blur(5px);
-    }
-
-    .overlay.hidden { display: none; }
-
-    .confirm-box {
-      width: 100%;
-      max-width: 350px;
-      padding: 24px;
-      border: 1px solid #393a44;
-      border-radius: 18px;
-      background: #1b1c22;
-      text-align: center;
-      box-shadow: 0 20px 80px #0008;
-      animation: appear .2s ease-out;
-    }
-
-    @keyframes appear {
-      from { opacity: 0; transform: scale(.92); }
-      to { opacity: 1; transform: scale(1); }
-    }
-
-    .confirm-box h2 {
-      margin: 0 0 10px;
-      font-size: 22px;
-    }
-
-    .confirm-box p {
-      margin: 0;
-      color: #a1a1aa;
+    #feedback {
+      color: #a7b5c2;
       font-size: 14px;
-      line-height: 1.5;
-    }
-
-    .confirm-actions {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 14px;
-      min-height: 48px;
       margin-top: 24px;
-    }
-
-    .confirm-actions button {
-      min-width: 92px;
-      padding: 12px 20px;
-      border: 0;
-      border-radius: 9px;
-      font-weight: bold;
-      cursor: pointer;
-      touch-action: manipulation;
-    }
-
-    .cancel-btn {
-      background: #383941;
-      color: white;
-    }
-
-    .yes-btn {
-      background: #ef4444;
-      color: white;
-      box-shadow: 0 4px 14px #ef444433;
-    }
-
-    /* Desktop and mobile: button can escape across the viewport */
-    .yes-btn.dodging {
-      position: fixed;
-      z-index: 1002;
-      margin: 0;
-      transition: left .12s ease, top .12s ease;
-    }
-
-    .result-actions {
-      margin-top: 24px;
-    }
-
-    .result-actions button {
-      width: 100%;
-      padding: 12px 20px;
-      border: 0;
-      border-radius: 9px;
-      background: #ef4444;
-      color: white;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    .result-actions button:hover {
-      background: #dc2626;
-    }
-
-    @media (min-width: 600px) {
-      .optional-fields {
-        grid-template-columns: 1fr 1fr;
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after {
-        animation-duration: .01ms !important;
-        transition-duration: .01ms !important;
-      }
+      min-height: 20px;
     }
   </style>
 </head>
 
 <body>
-<main>
-  <h2>Clock Control</h2>
-
   <div class="status">
-    <span id="dot" class="dot offline"></span>
-    <span id="status">Clock disconnected</span>
+    <span class="dot" id="dot"></span>
+    <span id="statusText">CONNECTING TO CLOCK...</span>
   </div>
 
-  <div class="optional-fields">
-    <section class="panel">
-      <label>LED Matrix <span class="optional">(optional)</span></label>
-      <div id="matrix" class="matrix"></div>
-    </section>
+  <h1>YOUR CLOCK. YOUR RULES.</h1>
+  <div class="subtitle">Remote alarm control</div>
 
-    <section class="panel">
-      <label for="message">
-        Message <span class="optional">(optional)</span>
-      </label>
-      <textarea id="message" maxlength="200"
-        placeholder="Enter a message..."></textarea>
-    </section>
-  </div>
+  <button id="trigger" disabled>
+    ⏰<br><br>
+    TRIGGER<br>ALARM
+  </button>
 
-  <button id="trigger" class="trigger" disabled>Trigger Alarm</button>
-  <div id="result" role="status" aria-live="polite"></div>
-</main>
+  <div id="feedback">Connecting to MQTT...</div>
 
-<!-- Confirmation dialog -->
-<div id="confirmOverlay" class="overlay hidden">
-  <section class="confirm-box" role="dialog"
-    aria-modal="true" aria-labelledby="confirmTitle">
+  <script>
+    const BROKER = "wss://broker.hivemq.com:8884/mqtt";
+    const TOPIC = "snapclock-00989800/control";
 
-    <h2 id="confirmTitle">Are you sure?</h2>
-    <p>You're about to trigger the alarm.<br>
-      Think carefully...</p>
+    const statusText = document.getElementById("statusText");
+    const dot = document.getElementById("dot");
+    const button = document.getElementById("trigger");
+    const feedback = document.getElementById("feedback");
 
-    <div class="confirm-actions" id="confirmActions">
-      <button id="noBtn" class="cancel-btn" type="button">Nope</button>
-      <button id="yesBtn" class="yes-btn" type="button">Yes!</button>
-    </div>
-  </section>
-</div>
-
-<!-- Result dialog shown after Yes or Nope -->
-<div id="resultOverlay" class="overlay hidden">
-  <section class="confirm-box" role="dialog"
-    aria-modal="true" aria-labelledby="resultTitle"
-    aria-describedby="resultMessage">
-
-    <h2 id="resultTitle">Thank you!</h2>
-    <p id="resultMessage"></p>
-
-    <div class="result-actions">
-      <button id="resultClose" type="button">Okay</button>
-    </div>
-  </section>
-</div>
-
-<script>
-  // MQTT configuration
-  const MQTT_HOST = "broker.hivemq.com";
-  const MQTT_PORT = 8884;
-
-  const COMMAND_TOPIC = "snapclock-00989800/control";
-  const STATUS_TOPIC = "snapclock-00989800/status";
-
-  const leds = Array(64).fill(false);
-  const matrixElement = document.getElementById("matrix");
-  const statusElement = document.getElementById("status");
-  const dot = document.getElementById("dot");
-  const result = document.getElementById("result");
-
-  const triggerBtn = document.getElementById("trigger");
-  const overlay = document.getElementById("confirmOverlay");
-  const resultOverlay = document.getElementById("resultOverlay");
-  const yesBtn = document.getElementById("yesBtn");
-  const noBtn = document.getElementById("noBtn");
-  const actions = document.getElementById("confirmActions");
-
-  let client = null;
-  let heartbeatTimer = null;
-  let connectedToBroker = false;
-  let popupOpen = false;
-  let dodgeCount = 0;
-
-  const MAX_DODGES = 7;
-
-  // A new message is displayed after every dodge.
-  const yesMessages = [
-    "Yes!",
-    "Are you sure?",
-    "Too slow!",
-    "Think again!",
-    "Missed me!",
-    "Almost got me!",
-    "One last chance!",
-    "Fine, you win!"
-  ];
-
-  console.log("[MQTT] Library loaded:", typeof mqtt !== "undefined");
-  console.log("[MQTT] Host:", MQTT_HOST);
-  console.log("[MQTT] Command topic:", COMMAND_TOPIC);
-  console.log("[MQTT] Status topic:", STATUS_TOPIC);
-
-  // Build the LED matrix.
-  leds.forEach((_, i) => {
-    const led = document.createElement("button");
-    led.className = "led";
-    led.type = "button";
-    led.setAttribute("aria-label", `LED ${i + 1}`);
-    led.setAttribute("aria-pressed", "false");
-
-    led.onclick = () => {
-      leds[i] = !leds[i];
-      led.classList.toggle("on", leds[i]);
-      led.setAttribute("aria-pressed", String(leds[i]));
-    };
-
-    matrixElement.appendChild(led);
-  });
-
-  function setStatus(text, state = "") {
-    statusElement.textContent = text;
-    dot.className = "dot" + (state ? " " + state : "");
-    console.log("[STATUS]", text);
-  }
-
-  function showClockOffline() {
-    setStatus(
-      connectedToBroker ? "Clock disconnected" : "Broker disconnected",
-      "offline"
-    );
-  }
-
-  // Connect to HiveMQ over secure WebSockets.
-  function connect() {
-    if (typeof mqtt === "undefined") {
-      setStatus("MQTT library failed to load", "offline");
-      result.textContent = "Could not load MQTT.js.";
-      return;
-    }
-
-    const brokerUrl = `wss://${MQTT_HOST}:${MQTT_PORT}/mqtt`;
-
-    setStatus("Connecting...");
-    console.log("[MQTT] Connecting to:", brokerUrl);
-
-    client = mqtt.connect(brokerUrl, {
-      clientId: "clock_web_" +
+    const client = mqtt.connect(BROKER, {
+      clientId: "snapclock_web_" +
         Math.random().toString(16).slice(2, 10),
       clean: true,
       connectTimeout: 10000,
       reconnectPeriod: 3000
     });
 
+    function setStatus(connected, message) {
+      statusText.textContent = message;
+      statusText.style.color = connected ? "#72f1b8" : "#ff6b6b";
+      dot.style.background = connected ? "#72f1b8" : "#e53935";
+      button.disabled = !connected;
+    }
+
     client.on("connect", () => {
-      connectedToBroker = true;
-      console.log("[MQTT] Connected to broker.");
-      setStatus("Waiting for clock...");
-      triggerBtn.disabled = false;
-
-      client.subscribe(STATUS_TOPIC, { qos: 0 }, error => {
-        if (error) {
-          console.error("[MQTT] Subscribe failed:", error);
-        } else {
-          console.log("[MQTT] Subscribed:", STATUS_TOPIC);
-        }
-      });
-    });
-
-    client.on("message", (topic, payload) => {
-      const text = payload.toString();
-
-      console.log("[MQTT] Incoming topic:", topic);
-      console.log("[MQTT] Incoming payload:", text);
-
-      if (topic !== STATUS_TOPIC) return;
-
-      let online = false;
-      let offline = false;
-
-      try {
-        const data = JSON.parse(text);
-
-        online =
-          data.online === true ||
-          data.status === "online" ||
-          data.state === "online";
-
-        offline =
-          data.online === false ||
-          data.status === "offline" ||
-          data.state === "offline";
-      } catch (_) {
-        online = text.trim().toLowerCase() === "online";
-        offline = text.trim().toLowerCase() === "offline";
-      }
-
-      clearTimeout(heartbeatTimer);
-
-      if (online) {
-        setStatus("Clock online", "online");
-
-        heartbeatTimer = setTimeout(() => {
-          console.warn("[MQTT] Heartbeat timed out.");
-          showClockOffline();
-        }, 30000);
-      } else if (offline) {
-        showClockOffline();
-      }
+      setStatus(true, "MQTT CONNECTED");
+      feedback.textContent = "Ready to control your clock.";
     });
 
     client.on("reconnect", () => {
-      connectedToBroker = false;
-      triggerBtn.disabled = true;
-      clearTimeout(heartbeatTimer);
-      setStatus("Reconnecting...", "offline");
+      setStatus(false, "RECONNECTING...");
+    });
+
+    client.on("offline", () => {
+      setStatus(false, "CLOCK DISCONNECTED");
     });
 
     client.on("close", () => {
-      connectedToBroker = false;
-      triggerBtn.disabled = true;
-      clearTimeout(heartbeatTimer);
-      showClockOffline();
+      setStatus(false, "CLOCK DISCONNECTED");
     });
 
     client.on("error", error => {
-      console.error("[MQTT] Connection error:", error);
-      setStatus("Connection error", "offline");
+      console.error("MQTT error:", error);
+      setStatus(false, "CONNECTION ERROR");
     });
-  }
 
-  // Publish the complete alarm payload.
-  function sendAlarmCommand() {
-    console.log("========== ALARM REQUEST ==========");
+    button.addEventListener("click", () => {
+      if (!client.connected) return;
 
-    if (!client || !client.connected) {
-      console.error("[MQTT] Cannot send: broker disconnected.");
-      result.textContent = "Cannot send: broker disconnected.";
-      return false;
-    }
+      button.disabled = true;
+      feedback.textContent = "Sending alarm command...";
 
-    const message = document.getElementById("message").value.trim();
+      const payload = JSON.stringify({
+        trigger: true
+      });
 
-    const matrix = Array.from({ length: 8 }, (_, row) =>
-      leds.slice(row * 8, row * 8 + 8)
-        .map(on => on ? "1" : "0")
-        .join("")
-    );
+      client.publish(
+        TOPIC,
+        payload,
+        { qos: 0, retain: false },
+        error => {
+          button.disabled = !client.connected;
 
-    const payload = {
-      type: "clock_control",
-      command: "trigger_alarm",
-      trigger: true,
-      matrix: matrix,
-      message: message
-    };
-
-    const payloadString = JSON.stringify(payload);
-
-    console.log("[MQTT] Publish topic:", COMMAND_TOPIC);
-    console.log("[MQTT] Payload object:", payload);
-    console.log("[MQTT] Payload JSON:", payloadString);
-
-    result.textContent = "Sending alarm command...";
-
-    client.publish(
-      COMMAND_TOPIC,
-      payloadString,
-      { qos: 1 },
-      error => {
-        if (error) {
-          console.error("[MQTT] Publish failed:", error);
-          result.textContent = "Failed to publish command.";
-        } else {
-          console.log("[MQTT] Publish acknowledged by broker.");
-          result.textContent = "Command published to broker.";
+          if (error) {
+            feedback.textContent = "Failed to send command.";
+          } else {
+            feedback.textContent = "Command published to MQTT.";
+          }
         }
-
-        console.log("===================================");
-      }
-    );
-
-    return true;
-  }
-
-  // Confirmation popup.
-  function resetYesButton() {
-    yesBtn.classList.remove("dodging");
-    yesBtn.style.left = "";
-    yesBtn.style.top = "";
-    yesBtn.textContent = yesMessages[0];
-    actions.appendChild(yesBtn);
-    dodgeCount = 0;
-  }
-
-  function openConfirmation() {
-    if (!client || !client.connected) {
-      result.textContent = "Cannot trigger: broker disconnected.";
-      return;
-    }
-
-    popupOpen = true;
-    resetYesButton();
-    overlay.classList.remove("hidden");
-    noBtn.focus();
-  }
-
-  function closeConfirmation() {
-    popupOpen = false;
-    overlay.classList.add("hidden");
-    resetYesButton();
-  }
-
-  triggerBtn.addEventListener("click", openConfirmation);
-
-  // Nope closes confirmation and shows a message.
-  noBtn.addEventListener("click", () => {
-    closeConfirmation();
-
-    showResultPopup(
-      "Nope!",
-      "Changed your mind? The alarm has not been triggered. You can relax... for now."
-    );
-  });
-
-  // Move Yes somewhere else on the entire screen.
-  function dodgeButton(event) {
-    if (!popupOpen || dodgeCount >= MAX_DODGES) return;
-
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-
-    dodgeCount++;
-
-    // Update the message on every dodge.
-    yesBtn.textContent =
-      yesMessages[Math.min(dodgeCount, yesMessages.length - 1)];
-
-    // After the seventh dodge, return Yes to the dialog.
-    if (dodgeCount >= MAX_DODGES) {
-      yesBtn.classList.remove("dodging");
-      yesBtn.style.left = "";
-      yesBtn.style.top = "";
-      actions.appendChild(yesBtn);
-      return;
-    }
-
-    const rect = yesBtn.getBoundingClientRect();
-    const margin = 12;
-
-    const maxX = Math.max(
-      margin,
-      window.innerWidth - rect.width - margin
-    );
-
-    const maxY = Math.max(
-      margin,
-      window.innerHeight - rect.height - margin
-    );
-
-    const x = margin + Math.random() * Math.max(0, maxX - margin);
-    const y = margin + Math.random() * Math.max(0, maxY - margin);
-
-    yesBtn.classList.add("dodging");
-    yesBtn.style.left = `${x}px`;
-    yesBtn.style.top = `${y}px`;
-  }
-
-  // Desktop: dodge when the pointer comes within 65px.
-  document.addEventListener("pointermove", event => {
-    if (
-      !popupOpen ||
-      event.pointerType !== "mouse" ||
-      dodgeCount >= MAX_DODGES
-    ) return;
-
-    const rect = yesBtn.getBoundingClientRect();
-
-    const distance = Math.hypot(
-      event.clientX - (rect.left + rect.width / 2),
-      event.clientY - (rect.top + rect.height / 2)
-    );
-
-    if (distance < 65) {
-      dodgeButton();
-    }
-  });
-
-  /*
-   * Mobile fix:
-   * Count each touch attempt directly on pointerdown.
-   * Prevent the touch from also becoming a click on the moving button.
-   * Each touch can increment the dodge counter only once.
-   */
-  yesBtn.addEventListener("pointerdown", event => {
-    if (event.pointerType !== "touch") return;
-    if (!popupOpen || dodgeCount >= MAX_DODGES) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-    dodgeButton();
-  });
-
-  // Yes only works after the button has dodged seven times.
-  yesBtn.addEventListener("click", () => {
-    if (dodgeCount < MAX_DODGES) return;
-
-    closeConfirmation();
-
-    const published = sendAlarmCommand();
-
-    if (published) {
-      showResultPopup(
-        "Thank you!",
-        "You finally caught the button. Your alarm command has been sent to the broker."
       );
-    } else {
-      showResultPopup(
-        "Connection lost",
-        "The command could not be sent because the broker is disconnected. Please try again."
-      );
-    }
-  });
-
-  // Close the confirmation by clicking outside.
-  overlay.addEventListener("click", event => {
-    if (event.target === overlay) {
-      closeConfirmation();
-    }
-  });
-
-  // Result popup.
-  function showResultPopup(title, message) {
-    document.getElementById("resultTitle").textContent = title;
-    document.getElementById("resultMessage").textContent = message;
-    resultOverlay.classList.remove("hidden");
-    document.getElementById("resultClose").focus();
-  }
-
-  function closeResultPopup() {
-    resultOverlay.classList.add("hidden");
-    triggerBtn.focus();
-  }
-
-  document.getElementById("resultClose").addEventListener(
-    "click",
-    closeResultPopup
-  );
-
-  resultOverlay.addEventListener("click", event => {
-    if (event.target === resultOverlay) {
-      closeResultPopup();
-    }
-  });
-
-  document.addEventListener("keydown", event => {
-    if (event.key === "Escape") {
-      if (popupOpen) {
-        closeConfirmation();
-      } else if (!resultOverlay.classList.contains("hidden")) {
-        closeResultPopup();
-      }
-    }
-  });
-
-  window.addEventListener("beforeunload", () => {
-    clearTimeout(heartbeatTimer);
-    if (client) client.end(true);
-  });
-
-  connect();
-</script>
+    });
+  </script>
 </body>
 </html>
