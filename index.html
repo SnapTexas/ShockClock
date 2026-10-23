@@ -18,11 +18,7 @@
       font-family: Arial, sans-serif;
     }
 
-    main {
-      max-width: 540px;
-      margin: auto;
-    }
-
+    main { max-width: 540px; margin: auto; }
     h2 { margin-top: 0; }
 
     .status {
@@ -37,9 +33,9 @@
     .dot {
       width: 9px;
       height: 9px;
+      flex-shrink: 0;
       border-radius: 50%;
       background: #777985;
-      flex-shrink: 0;
     }
 
     .dot.online { background: #22c55e; }
@@ -52,6 +48,7 @@
     }
 
     .panel {
+      min-width: 0;
       background: #1b1c22;
       border: 1px solid #303137;
       border-radius: 12px;
@@ -67,8 +64,8 @@
 
     .optional {
       color: #a1a1aa;
-      font-weight: normal;
       font-size: 12px;
+      font-weight: normal;
     }
 
     .matrix {
@@ -82,8 +79,8 @@
     .led {
       width: 15px;
       height: 15px;
-      border: 0;
       padding: 0;
+      border: 0;
       border-radius: 50%;
       background: #41424b;
       cursor: pointer;
@@ -96,6 +93,7 @@
     }
 
     textarea {
+      display: block;
       width: 100%;
       height: 85px;
       resize: vertical;
@@ -108,11 +106,9 @@
       font-size: 14px;
     }
 
-    button {
-      font: inherit;
-    }
+    button { font: inherit; }
 
-    button.trigger {
+    .trigger {
       width: 100%;
       margin-top: 14px;
       padding: 14px;
@@ -126,12 +122,12 @@
       transition: background .2s, transform .2s;
     }
 
-    button.trigger:hover {
-      background: #dc2626;
-    }
+    .trigger:hover { background: #dc2626; }
+    .trigger:active { transform: scale(.98); }
 
-    button.trigger:active {
-      transform: scale(.98);
+    .trigger:disabled {
+      opacity: .5;
+      cursor: not-allowed;
     }
 
     #result {
@@ -141,7 +137,7 @@
       overflow-wrap: anywhere;
     }
 
-    /* Confirmation popup */
+    /* Confirmation and result dialogs */
     .overlay {
       position: fixed;
       inset: 0;
@@ -154,9 +150,7 @@
       backdrop-filter: blur(5px);
     }
 
-    .overlay.hidden {
-      display: none;
-    }
+    .overlay.hidden { display: none; }
 
     .confirm-box {
       width: 100%;
@@ -175,27 +169,22 @@
       to { opacity: 1; transform: scale(1); }
     }
 
-    .warning-icon {
-      font-size: 38px;
-      margin-bottom: 12px;
-    }
-
     .confirm-box h2 {
-      font-size: 22px;
       margin: 0 0 10px;
+      font-size: 22px;
     }
 
     .confirm-box p {
+      margin: 0;
       color: #a1a1aa;
       font-size: 14px;
       line-height: 1.5;
-      margin: 0;
     }
 
     .confirm-actions {
       display: flex;
-      justify-content: center;
       align-items: center;
+      justify-content: center;
       gap: 14px;
       min-height: 48px;
       margin-top: 24px;
@@ -222,10 +211,31 @@
       box-shadow: 0 4px 14px #ef444433;
     }
 
+    /* Desktop: the button escapes across the viewport */
     .yes-btn.dodging {
       position: fixed;
       z-index: 1002;
+      margin: 0;
       transition: left .12s ease, top .12s ease;
+    }
+
+    .result-actions {
+      margin-top: 24px;
+    }
+
+    .result-actions button {
+      width: 100%;
+      padding: 12px 20px;
+      border: 0;
+      border-radius: 9px;
+      background: #ef4444;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .result-actions button:hover {
+      background: #dc2626;
     }
 
     @media (min-width: 600px) {
@@ -248,7 +258,7 @@
   <h2>Clock Control</h2>
 
   <div class="status">
-    <span id="dot" class="dot"></span>
+    <span id="dot" class="dot offline"></span>
     <span id="status">Clock disconnected</span>
   </div>
 
@@ -267,39 +277,48 @@
     </section>
   </div>
 
-  <button id="trigger" class="trigger">Trigger Alarm</button>
+  <button id="trigger" class="trigger" disabled>Trigger Alarm</button>
   <div id="result" role="status" aria-live="polite"></div>
 </main>
 
-<!-- Confirmation prank -->
+<!-- Confirmation dialog -->
 <div id="confirmOverlay" class="overlay hidden">
   <section class="confirm-box" role="dialog"
     aria-modal="true" aria-labelledby="confirmTitle">
 
-    <div class="warning-icon">⚠️</div>
-    <h2 id="confirmTitle">Are you sure? 👀</h2>
+    <h2 id="confirmTitle">Are you sure?</h2>
     <p>You're about to trigger the alarm.<br>
       Think carefully...</p>
 
     <div class="confirm-actions" id="confirmActions">
-      <button id="noBtn" class="cancel-btn">Nope</button>
-      <button id="yesBtn" class="yes-btn">Yes!</button>
+      <button id="noBtn" class="cancel-btn" type="button">Nope</button>
+      <button id="yesBtn" class="yes-btn" type="button">Yes!</button>
+    </div>
+  </section>
+</div>
+
+<!-- Result dialog shown after Yes or Nope -->
+<div id="resultOverlay" class="overlay hidden">
+  <section class="confirm-box" role="dialog"
+    aria-modal="true" aria-labelledby="resultTitle"
+    aria-describedby="resultMessage">
+
+    <h2 id="resultTitle">Thank you!</h2>
+    <p id="resultMessage"></p>
+
+    <div class="result-actions">
+      <button id="resultClose" type="button">Okay</button>
     </div>
   </section>
 </div>
 
 <script>
-  // PUBLIC MQTT BROKER
+  // MQTT configuration
   const MQTT_HOST = "broker.hivemq.com";
   const MQTT_PORT = 8884;
 
   const COMMAND_TOPIC = "snapclock-00989800/control";
   const STATUS_TOPIC = "snapclock-00989800/status";
-
-  console.log("MQTT.js loaded:", typeof mqtt !== "undefined");
-  console.log("Broker:", MQTT_HOST, MQTT_PORT);
-  console.log("Command topic:", COMMAND_TOPIC);
-  console.log("Status topic:", STATUS_TOPIC);
 
   const leds = Array(64).fill(false);
   const matrixElement = document.getElementById("matrix");
@@ -307,23 +326,38 @@
   const dot = document.getElementById("dot");
   const result = document.getElementById("result");
 
-  let client;
-  let heartbeatTimer;
+  const triggerBtn = document.getElementById("trigger");
+  const overlay = document.getElementById("confirmOverlay");
+  const resultOverlay = document.getElementById("resultOverlay");
+  const yesBtn = document.getElementById("yesBtn");
+  const noBtn = document.getElementById("noBtn");
+  const actions = document.getElementById("confirmActions");
+
+  let client = null;
+  let heartbeatTimer = null;
   let connectedToBroker = false;
-  let clockOnline = false;
   let popupOpen = false;
   let dodgeCount = 0;
 
-  // Build the 8x8 matrix.
+  const MAX_DODGES = 7;
+
+  console.log("[MQTT] Library loaded:", typeof mqtt !== "undefined");
+  console.log("[MQTT] Host:", MQTT_HOST);
+  console.log("[MQTT] Command topic:", COMMAND_TOPIC);
+  console.log("[MQTT] Status topic:", STATUS_TOPIC);
+
+  // Build the LED matrix.
   leds.forEach((_, i) => {
     const led = document.createElement("button");
     led.className = "led";
     led.type = "button";
     led.setAttribute("aria-label", `LED ${i + 1}`);
+    led.setAttribute("aria-pressed", "false");
 
     led.onclick = () => {
       leds[i] = !leds[i];
       led.classList.toggle("on", leds[i]);
+      led.setAttribute("aria-pressed", String(leds[i]));
     };
 
     matrixElement.appendChild(led);
@@ -336,13 +370,13 @@
   }
 
   function showClockOffline() {
-    clockOnline = false;
     setStatus(
       connectedToBroker ? "Clock disconnected" : "Broker disconnected",
       "offline"
     );
   }
 
+  // Connect to HiveMQ over secure WebSockets.
   function connect() {
     if (typeof mqtt === "undefined") {
       setStatus("MQTT library failed to load", "offline");
@@ -352,8 +386,8 @@
 
     const brokerUrl = `wss://${MQTT_HOST}:${MQTT_PORT}/mqtt`;
 
-    setStatus("Connecting...", "");
-    console.log("[MQTT] Connecting to", brokerUrl);
+    setStatus("Connecting...");
+    console.log("[MQTT] Connecting to:", brokerUrl);
 
     client = mqtt.connect(brokerUrl, {
       clientId: "clock_web_" +
@@ -366,9 +400,10 @@
     client.on("connect", () => {
       connectedToBroker = true;
       console.log("[MQTT] Connected to broker.");
-      setStatus("Waiting for clock...", "");
+      setStatus("Waiting for clock...");
+      triggerBtn.disabled = false;
 
-      client.subscribe(STATUS_TOPIC, { qos: 0 }, (error) => {
+      client.subscribe(STATUS_TOPIC, { qos: 0 }, error => {
         if (error) {
           console.error("[MQTT] Subscribe failed:", error);
         } else {
@@ -385,118 +420,130 @@
 
       if (topic !== STATUS_TOPIC) return;
 
+      let online = false;
+      let offline = false;
+
       try {
         const data = JSON.parse(text);
-        const online =
-          data.online === true || data.status === "online";
 
-        clearTimeout(heartbeatTimer);
+        online =
+          data.online === true ||
+          data.status === "online" ||
+          data.state === "online";
 
-        if (online) {
-          clockOnline = true;
-          setStatus("Clock online", "online");
+        offline =
+          data.online === false ||
+          data.status === "offline" ||
+          data.state === "offline";
+      } catch (_) {
+        online = text.trim().toLowerCase() === "online";
+        offline = text.trim().toLowerCase() === "offline";
+      }
 
-          heartbeatTimer = setTimeout(() => {
-            console.warn("[MQTT] Clock heartbeat timed out.");
-            showClockOffline();
-          }, 30000);
-        } else {
+      clearTimeout(heartbeatTimer);
+
+      if (online) {
+        setStatus("Clock online", "online");
+
+        heartbeatTimer = setTimeout(() => {
+          console.warn("[MQTT] Heartbeat timed out.");
           showClockOffline();
-        }
-      } catch (error) {
-        console.error("[MQTT] Invalid status JSON:", error);
+        }, 30000);
+      } else if (offline) {
+        showClockOffline();
       }
     });
 
     client.on("reconnect", () => {
       connectedToBroker = false;
+      triggerBtn.disabled = true;
       clearTimeout(heartbeatTimer);
-      showClockOffline();
-      setStatus("Reconnecting...", "");
+      setStatus("Reconnecting...", "offline");
     });
 
     client.on("close", () => {
       connectedToBroker = false;
+      triggerBtn.disabled = true;
       clearTimeout(heartbeatTimer);
       showClockOffline();
     });
 
-    client.on("error", (error) => {
-      console.error("[MQTT] Error:", error);
+    client.on("error", error => {
+      console.error("[MQTT] Connection error:", error);
       setStatus("Connection error", "offline");
     });
   }
 
-  // Publish the alarm command.
+  // Publish the complete alarm payload.
   function sendAlarmCommand() {
     console.log("========== ALARM REQUEST ==========");
 
     if (!client || !client.connected) {
       console.error("[MQTT] Cannot send: broker disconnected.");
       result.textContent = "Cannot send: broker disconnected.";
-      return;
+      return false;
     }
 
-    const hasMatrix = leds.some(Boolean);
     const message = document.getElementById("message").value.trim();
+
+    const matrix = Array.from({ length: 8 }, (_, row) =>
+      leds.slice(row * 8, row * 8 + 8)
+        .map(on => on ? "1" : "0")
+        .join("")
+    );
 
     const payload = {
       type: "clock_control",
       command: "trigger_alarm",
-      trigger: true
+      trigger: true,
+      matrix: matrix,
+      message: message
     };
-
-    if (hasMatrix) {
-      payload.matrix = Array.from({ length: 8 }, (_, row) =>
-        leds.slice(row * 8, row * 8 + 8)
-          .map(on => on ? "1" : "0")
-          .join("")
-      );
-    }
-
-    if (message) {
-      payload.message = message;
-    }
 
     const payloadString = JSON.stringify(payload);
 
     console.log("[MQTT] Publish topic:", COMMAND_TOPIC);
+    console.log("[MQTT] Payload object:", payload);
     console.log("[MQTT] Payload JSON:", payloadString);
+
     result.textContent = "Sending alarm command...";
 
     client.publish(
       COMMAND_TOPIC,
       payloadString,
       { qos: 1 },
-      (error) => {
+      error => {
         if (error) {
           console.error("[MQTT] Publish failed:", error);
           result.textContent = "Failed to publish command.";
         } else {
-          console.log("[MQTT] Publish callback succeeded.");
+          console.log("[MQTT] Publish acknowledged by broker.");
           result.textContent = "Command published to broker.";
         }
+
         console.log("===================================");
       }
     );
+
+    return true;
   }
 
   // Confirmation popup.
-  const overlay = document.getElementById("confirmOverlay");
-  const yesBtn = document.getElementById("yesBtn");
-  const noBtn = document.getElementById("noBtn");
-  const actions = document.getElementById("confirmActions");
-  const triggerBtn = document.getElementById("trigger");
-
   function resetYesButton() {
     yesBtn.classList.remove("dodging");
     yesBtn.style.left = "";
     yesBtn.style.top = "";
+    yesBtn.textContent = "Yes!";
     actions.appendChild(yesBtn);
     dodgeCount = 0;
   }
 
   function openConfirmation() {
+    if (!client || !client.connected) {
+      result.textContent = "Cannot trigger: broker disconnected.";
+      return;
+    }
+
     popupOpen = true;
     resetYesButton();
     overlay.classList.remove("hidden");
@@ -507,15 +554,23 @@
     popupOpen = false;
     overlay.classList.add("hidden");
     resetYesButton();
-    triggerBtn.focus();
   }
 
   triggerBtn.addEventListener("click", openConfirmation);
-  noBtn.addEventListener("click", closeConfirmation);
 
-  // Move Yes before its click can activate on touch or mouse.
+  // Nope closes confirmation and shows a message.
+  noBtn.addEventListener("click", () => {
+    closeConfirmation();
+
+    showResultPopup(
+      "Nope!",
+      "Changed your mind? The alarm has not been triggered. You can relax... for now."
+    );
+  });
+
+  // Move Yes somewhere else on the entire screen.
   function dodgeButton(event) {
-    if (!popupOpen) return;
+    if (!popupOpen || dodgeCount >= MAX_DODGES) return;
 
     if (event) {
       event.preventDefault();
@@ -524,18 +579,27 @@
 
     dodgeCount++;
 
-    // After several dodges, let the user catch it.
-    // This keeps the prank playable on touch devices.
-    if (dodgeCount > 7) {
-      yesBtn.textContent = "Okay, Yes!";
+    if (dodgeCount >= MAX_DODGES) {
+      yesBtn.classList.remove("dodging");
+      yesBtn.style.left = "";
+      yesBtn.style.top = "";
+      yesBtn.textContent = "Yes!";
+      actions.appendChild(yesBtn);
       return;
     }
 
     const rect = yesBtn.getBoundingClientRect();
     const margin = 12;
 
-    const maxX = Math.max(margin, window.innerWidth - rect.width - margin);
-    const maxY = Math.max(margin, window.innerHeight - rect.height - margin);
+    const maxX = Math.max(
+      margin,
+      window.innerWidth - rect.width - margin
+    );
+
+    const maxY = Math.max(
+      margin,
+      window.innerHeight - rect.height - margin
+    );
 
     const x = margin + Math.random() * Math.max(0, maxX - margin);
     const y = margin + Math.random() * Math.max(0, maxY - margin);
@@ -543,32 +607,101 @@
     yesBtn.classList.add("dodging");
     yesBtn.style.left = `${x}px`;
     yesBtn.style.top = `${y}px`;
-
-    yesBtn.textContent = dodgeCount > 4 ? "Catch me!" : "Yes!";
+    yesBtn.textContent = "Yes!";
   }
 
-  yesBtn.addEventListener("pointerdown", (event) => {
-    if (dodgeCount <= 7) {
+  // Desktop: dodge when the pointer comes within 65px.
+  document.addEventListener("pointermove", event => {
+    if (
+      !popupOpen ||
+      event.pointerType !== "mouse" ||
+      dodgeCount >= MAX_DODGES
+    ) return;
+
+    const rect = yesBtn.getBoundingClientRect();
+
+    const distance = Math.hypot(
+      event.clientX - (rect.left + rect.width / 2),
+      event.clientY - (rect.top + rect.height / 2)
+    );
+
+    if (distance < 65) {
+      dodgeButton();
+    }
+  });
+
+  // Mobile: dodge on attempted touch until seven dodges.
+  yesBtn.addEventListener("pointerdown", event => {
+    if (event.pointerType === "touch" && dodgeCount < MAX_DODGES) {
       dodgeButton(event);
     }
   });
 
-  // Keyboard users can still confirm without chasing the button.
+  // Yes only works after the button has dodged seven times.
   yesBtn.addEventListener("click", () => {
-    if (dodgeCount <= 7) return;
+    if (dodgeCount < MAX_DODGES) return;
+
     closeConfirmation();
-    sendAlarmCommand();
+
+    const published = sendAlarmCommand();
+
+    if (published) {
+      showResultPopup(
+        "Thank you!",
+        "You finally caught the button. Your alarm command has been sent to the broker."
+      );
+    } else {
+      showResultPopup(
+        "Connection lost",
+        "The command could not be sent because the broker is disconnected. Please try again."
+      );
+    }
   });
 
-  // Close by tapping outside the dialog.
-  overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) closeConfirmation();
-  });
-
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && popupOpen) {
+  // Close the confirmation by clicking outside.
+  overlay.addEventListener("click", event => {
+    if (event.target === overlay) {
       closeConfirmation();
     }
+  });
+
+  // Result popup.
+  function showResultPopup(title, message) {
+    document.getElementById("resultTitle").textContent = title;
+    document.getElementById("resultMessage").textContent = message;
+    resultOverlay.classList.remove("hidden");
+    document.getElementById("resultClose").focus();
+  }
+
+  function closeResultPopup() {
+    resultOverlay.classList.add("hidden");
+    triggerBtn.focus();
+  }
+
+  document.getElementById("resultClose").addEventListener(
+    "click",
+    closeResultPopup
+  );
+
+  resultOverlay.addEventListener("click", event => {
+    if (event.target === resultOverlay) {
+      closeResultPopup();
+    }
+  });
+
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape") {
+      if (popupOpen) {
+        closeConfirmation();
+      } else if (!resultOverlay.classList.contains("hidden")) {
+        closeResultPopup();
+      }
+    }
+  });
+
+  window.addEventListener("beforeunload", () => {
+    clearTimeout(heartbeatTimer);
+    if (client) client.end(true);
   });
 
   connect();
