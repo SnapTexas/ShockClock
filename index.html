@@ -211,7 +211,7 @@
       box-shadow: 0 4px 14px #ef444433;
     }
 
-    /* Desktop: the button escapes across the viewport */
+    /* Desktop and mobile: button can escape across the viewport */
     .yes-btn.dodging {
       position: fixed;
       z-index: 1002;
@@ -341,7 +341,7 @@
 
   const MAX_DODGES = 7;
 
-  // A new message is displayed on every dodge.
+  // A new message is displayed after every dodge.
   const yesMessages = [
     "Yes!",
     "Are you sure?",
@@ -595,7 +595,7 @@
     yesBtn.textContent =
       yesMessages[Math.min(dodgeCount, yesMessages.length - 1)];
 
-    // After the seventh dodge, leave Yes in the dialog so it can be clicked.
+    // After the seventh dodge, return Yes to the dialog.
     if (dodgeCount >= MAX_DODGES) {
       yesBtn.classList.remove("dodging");
       yesBtn.style.left = "";
@@ -645,11 +645,19 @@
     }
   });
 
-  // Mobile: dodge on attempted touch until seven dodges.
+  /*
+   * Mobile fix:
+   * Count each touch attempt directly on pointerdown.
+   * Prevent the touch from also becoming a click on the moving button.
+   * Each touch can increment the dodge counter only once.
+   */
   yesBtn.addEventListener("pointerdown", event => {
-    if (event.pointerType === "touch" && dodgeCount < MAX_DODGES) {
-      dodgeButton(event);
-    }
+    if (event.pointerType !== "touch") return;
+    if (!popupOpen || dodgeCount >= MAX_DODGES) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    dodgeButton();
   });
 
   // Yes only works after the button has dodged seven times.
