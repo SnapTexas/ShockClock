@@ -1,0 +1,383 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clock Control</title>
+  <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.4/dist/mqtt.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 24px 16px;
+      background: #111216;
+      color: #f4f4f5;
+      font-family: Arial, sans-serif;
+    }
+
+    main {
+      max-width: 540px;
+      margin: auto;
+    }
+
+    h2 { margin-top: 0; }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 18px 0;
+      font-size: 13px;
+      color: #d4d4d8;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #f59e0b;
+    }
+
+    .dot.online { background: #22c55e; }
+    .dot.offline { background: #ef4444; }
+
+    .panel {
+      background: #1b1c22;
+      border: 1px solid #303137;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .optional {
+      color: #a1a1aa;
+      font-weight: normal;
+      font-size: 12px;
+    }
+
+    .matrix {
+      display: grid;
+      grid-template-columns: repeat(8, 15px);
+      gap: 5px;
+      width: fit-content;
+      margin: auto;
+    }
+
+    .led {
+      width: 15px;
+      height: 15px;
+      border: 0;
+      padding: 0;
+      border-radius: 50%;
+      background: #41424b;
+      cursor: pointer;
+    }
+
+    .led.on { background: #ef4444; }
+
+    textarea {
+      width: 100%;
+      height: 85px;
+      resize: vertical;
+      background: #111216;
+      color: white;
+      border: 1px solid #383941;
+      border-radius: 8px;
+      padding: 11px;
+      font: inherit;
+      font-size: 14px;
+    }
+
+    button.trigger {
+      width: 100%;
+      padding: 14px;
+      background: #ef4444;
+      color: white;
+      border: 0;
+      border-radius: 9px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button.trigger:hover { background: #dc2626; }
+
+    #result {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #a1a1aa;
+      overflow-wrap: anywhere;
+    }
+
+    @media (min-width: 600px) {
+      .optional-fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+
+      .panel { margin-bottom: 0; }
+      .trigger-wrap { margin-top: 14px; }
+    }
+  </style>
+</head>
+
+<body>
+<main>
+  <h2>Clock Control</h2>
+
+  <div class="status">
+    <span id="dot" class="dot"></span>
+    <span id="status">Connecting...</span>
+  </div>
+
+  <div class="optional-fields">
+    <section class="panel">
+      <label>LED Matrix <span class="optional">(optional)</span></label>
+      <div id="matrix" class="matrix"></div>
+    </section>
+
+    <section class="panel">
+      <label for="message">
+        Message <span class="optional">(optional)</span>
+      </label>
+      <textarea id="message" maxlength="200"
+        placeholder="Enter a message..."></textarea>
+    </section>
+  </div>
+
+  <div class="trigger-wrap">
+    <button id="trigger" class="trigger">Trigger Alarm</button>
+    <div id="result"></div>
+  </div>
+</main>
+
+<script>
+  // MQTT CONFIGURATION
+  const MQTT_HOST = "broker.hivemq.com";
+  const MQTT_PORT = 8884;
+
+  const MQTT_USERNAME = "";
+  const MQTT_PASSWORD = "";
+
+  const COMMAND_TOPIC = "snapclock-00989800/control";
+  const STATUS_TOPIC = "snapclock-00989800/status";
+
+  console.log("========== MQTT CONFIG ==========");
+  console.log("Host:", MQTT_HOST);
+  console.log("Port:", MQTT_PORT);
+  console.log("Username:", MQTT_USERNAME);
+  console.log("Password configured:", Boolean(MQTT_PASSWORD));
+  console.log("Command topic:", COMMAND_TOPIC);
+  console.log("Status topic:", STATUS_TOPIC);
+  console.log("MQTT.js loaded:", typeof mqtt !== "undefined");
+  console.log("=================================");
+
+  const leds = Array(64).fill(false);
+  const matrixElement = document.getElementById("matrix");
+  const statusElement = document.getElementById("status");
+  const dot = document.getElementById("dot");
+  const result = document.getElementById("result");
+
+  let client;
+  let heartbeatTimer;
+
+  // Create the 8x8 matrix.
+  leds.forEach((_, i) => {
+    const led = document.createElement("button");
+    led.className = "led";
+    led.type = "button";
+    led.setAttribute("aria-label", `LED ${i + 1}`);
+
+    led.onclick = () => {
+      leds[i] = !leds[i];
+      led.classList.toggle("on", leds[i]);
+    };
+
+    matrixElement.appendChild(led);
+  });
+
+  function setStatus(text, state = "") {
+    statusElement.textContent = text;
+    dot.className = "dot " + state;
+    console.log("[STATUS]", text);
+  }
+
+  function connect() {
+    if (typeof mqtt === "undefined") {
+      setStatus("MQTT library failed to load", "offline");
+      result.textContent = "Check the browser console and MQTT.js CDN.";
+      console.error("[MQTT] mqtt.js is not loaded.");
+      return;
+    }
+
+    if (
+      MQTT_HOST.startsWith("YOUR_") ||
+      MQTT_USERNAME.startsWith("YOUR_") ||
+      MQTT_PASSWORD.startsWith("YOUR_")
+    ) {
+      setStatus("MQTT not configured", "offline");
+      result.textContent = "Update the MQTT settings in the code.";
+      console.error("[MQTT] Configuration placeholders have not been replaced.");
+      return;
+    }
+
+    const brokerUrl = `wss://${MQTT_HOST}:${MQTT_PORT}/mqtt`;
+
+    console.log("[MQTT] Connecting...");
+    console.log("[MQTT] Broker URL:", brokerUrl);
+    console.log("[MQTT] Username:", MQTT_USERNAME);
+    console.log("[MQTT] Password configured:", Boolean(MQTT_PASSWORD));
+
+    setStatus("Connecting...");
+
+    client = mqtt.connect(brokerUrl, {
+      username: MQTT_USERNAME,
+      password: MQTT_PASSWORD,
+      connectTimeout: 10000,
+      reconnectPeriod: 3000
+    });
+
+    client.on("connect", () => {
+      console.log("[MQTT] Connected successfully.");
+      console.log("[MQTT] Subscribing to:", STATUS_TOPIC);
+
+      setStatus("Connected to broker; checking clock...");
+
+      client.subscribe(STATUS_TOPIC, { qos: 1 }, (error, granted) => {
+        if (error) {
+          console.error("[MQTT] Subscribe failed:", error);
+          return;
+        }
+
+        console.log("[MQTT] Subscription successful:", granted);
+      });
+    });
+
+    client.on("message", (topic, payload) => {
+      const text = payload.toString();
+
+      console.log("[MQTT] Incoming topic:", topic);
+      console.log("[MQTT] Incoming payload:", text);
+
+      if (topic !== STATUS_TOPIC) return;
+
+      try {
+        const data = JSON.parse(text);
+        const online =
+          data.online === true || data.status === "online";
+
+        clearTimeout(heartbeatTimer);
+
+        if (online) {
+          setStatus("Clock online", "online");
+
+          heartbeatTimer = setTimeout(() => {
+            console.warn("[MQTT] ESP32 heartbeat timed out.");
+            setStatus("Clock status unknown");
+          }, 30000);
+        } else {
+          setStatus("Clock offline", "offline");
+        }
+      } catch (error) {
+        console.error("[MQTT] Invalid status JSON:", error);
+      }
+    });
+
+    client.on("reconnect", () => {
+      console.warn("[MQTT] Reconnecting...");
+      clearTimeout(heartbeatTimer);
+      setStatus("Reconnecting...");
+    });
+
+    client.on("close", () => {
+      console.warn("[MQTT] Connection closed.");
+      clearTimeout(heartbeatTimer);
+      setStatus("Disconnected", "offline");
+    });
+
+    client.on("offline", () => {
+      console.warn("[MQTT] Client offline.");
+    });
+
+    client.on("error", (error) => {
+      console.error("[MQTT] Connection error:", error);
+      setStatus("Connection error", "offline");
+    });
+  }
+
+  document.getElementById("trigger").onclick = () => {
+    console.log("========== ALARM REQUEST ==========");
+
+    if (!client || !client.connected) {
+      console.error("[MQTT] Cannot send: broker disconnected.");
+      result.textContent = "Cannot send: MQTT is disconnected.";
+      return;
+    }
+
+    const hasMatrix = leds.some(Boolean);
+    const message = document.getElementById("message").value.trim();
+
+    const payload = {
+      type: "clock_control",
+      command: "trigger_alarm",
+      trigger: true
+    };
+
+    // Include matrix only if at least one LED is on.
+    if (hasMatrix) {
+      payload.matrix = Array.from({ length: 8 }, (_, row) =>
+        leds.slice(row * 8, row * 8 + 8)
+          .map(on => on ? "1" : "0")
+          .join("")
+      );
+    }
+
+    // Include message only if non-empty.
+    if (message) {
+      payload.message = message;
+    }
+
+    const payloadString = JSON.stringify(payload);
+
+    console.log("[MQTT] Publish topic:", COMMAND_TOPIC);
+    console.log("[MQTT] Payload object:", payload);
+    console.log("[MQTT] Payload JSON:", payloadString);
+    console.log("[MQTT] QoS:", 1);
+    console.log("[MQTT] Matrix included:", hasMatrix);
+    console.log("[MQTT] Message included:", Boolean(message));
+
+    result.textContent = "Sending alarm command...";
+
+    client.publish(
+      COMMAND_TOPIC,
+      payloadString,
+      { qos: 1 },
+      (error) => {
+        if (error) {
+          console.error("[MQTT] Publish failed:", error);
+          result.textContent = "Failed to send alarm command.";
+        } else {
+          console.log("[MQTT] Publish callback succeeded.");
+          result.textContent = "Alarm command sent.";
+        }
+
+        console.log("===================================");
+      }
+    );
+  };
+
+  connect();
+</script>
+</body>
+</html>
