@@ -341,6 +341,18 @@
 
   const MAX_DODGES = 7;
 
+  // A new message is displayed on every dodge.
+  const yesMessages = [
+    "Yes!",
+    "Are you sure?",
+    "Too slow!",
+    "Think again!",
+    "Missed me!",
+    "Almost got me!",
+    "One last chance!",
+    "Fine, you win!"
+  ];
+
   console.log("[MQTT] Library loaded:", typeof mqtt !== "undefined");
   console.log("[MQTT] Host:", MQTT_HOST);
   console.log("[MQTT] Command topic:", COMMAND_TOPIC);
@@ -533,7 +545,7 @@
     yesBtn.classList.remove("dodging");
     yesBtn.style.left = "";
     yesBtn.style.top = "";
-    yesBtn.textContent = "Yes!";
+    yesBtn.textContent = yesMessages[0];
     actions.appendChild(yesBtn);
     dodgeCount = 0;
   }
@@ -579,11 +591,15 @@
 
     dodgeCount++;
 
+    // Update the message on every dodge.
+    yesBtn.textContent =
+      yesMessages[Math.min(dodgeCount, yesMessages.length - 1)];
+
+    // After the seventh dodge, leave Yes in the dialog so it can be clicked.
     if (dodgeCount >= MAX_DODGES) {
       yesBtn.classList.remove("dodging");
       yesBtn.style.left = "";
       yesBtn.style.top = "";
-      yesBtn.textContent = "Yes!";
       actions.appendChild(yesBtn);
       return;
     }
@@ -607,7 +623,6 @@
     yesBtn.classList.add("dodging");
     yesBtn.style.left = `${x}px`;
     yesBtn.style.top = `${y}px`;
-    yesBtn.textContent = "Yes!";
   }
 
   // Desktop: dodge when the pointer comes within 65px.
