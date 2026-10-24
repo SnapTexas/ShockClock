@@ -1,0 +1,226 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your Clock. Your Rules.</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #101820;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+
+    #status {
+      position: absolute;
+      top: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      letter-spacing: 1px;
+    }
+
+    #dot {
+      width: 9px;
+      height: 9px;
+      background: #e53935;
+      border-radius: 50%;
+    }
+
+    h1 { font-size: clamp(25px, 5vw, 36px); }
+    .subtitle { color: #a7b5c2; margin-bottom: 38px; }
+
+    #trigger {
+      width: 220px;
+      height: 220px;
+      border: none;
+      border-radius: 50%;
+      background: #e53935;
+      color: white;
+      font-size: 21px;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 10px 35px #e5393533;
+      transition: transform .15s, background .15s;
+    }
+
+    #trigger:hover:not(:disabled) {
+      background: #f44336;
+      transform: scale(1.03);
+    }
+
+    #trigger:active:not(:disabled) {
+      transform: scale(.96);
+    }
+
+    #trigger:disabled {
+      opacity: .4;
+      cursor: not-allowed;
+    }
+
+    #feedback {
+      margin-top: 24px;
+      min-height: 20px;
+      color: #a7b5c2;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">
+    <span id="dot"></span>
+    <span id="statusText">CONNECTING TO MQTT...</span>
+  </div>
+
+  <h1>YOUR CLOCK. YOUR RULES.</h1>
+  <div class="subtitle">Remote alarm control</div>
+
+  <button id="trigger" disabled>
+    ⏰<br><br>TRIGGER<br>ALARM
+  </button>
+
+  <div id="feedback">Connecting to broker...</div>
+
+  <script>
+    const BROKER = "wss://broker.hivemq.com:8884/mqtt";
+    const TOPIC = "snapclock-00989800/control";
+
+    const statusText = document.getElementById("statusText");
+    const dot = document.getElementById("dot");
+    const button = document.getElementById("trigger");
+    const feedback = document.getElementById("feedback");
+
+    const client = mqtt.connect(BROKER, {
+      clientId: "snapclock_web_" +
+        Math.random().toString(16).slice(2, 10),
+      clean: true,
+      connectTimeout: 10000,
+      reconnectPeriod: 3000
+    });
+
+    function playSound() {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+      const oscillator = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      oscillator.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      // Dark, descending electronic sound
+      oscillator.type = "sawtooth";
+      oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(
+        100,
+        audioCtx.currentTime + 0.35
+      );
+
+      gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(
+        0.001,
+        audioCtx.currentTime + 0.35
+      );
+
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.35);
+
+      oscillator.onended = () => audioCtx.close();
+    }
+      function setStatus(connected, text) {
+        statusText.textContent = text;
+        statusText.style.color = connected ? "#72f1b8" : "#ff6b6b";
+        dot.style.background = connected ? "#72f1b8" : "#e53935";
+        button.disabled = !connected;
+    }
+
+    client.on("connect", () => {
+      console.log("[MQTT] Connected:", BROKER);
+      setStatus(true, "MQTT CONNECTED");
+      feedback.textContent = "Ready to control your clock.";
+    });
+
+    client.on("reconnect", () => {
+      console.log("[MQTT] Reconnecting...");
+      setStatus(false, "RECONNECTING...");
+    });
+
+    client.on("offline", () => {
+      console.warn("[MQTT] Offline");
+      setStatus(false, "MQTT DISCONNECTED");
+    });
+
+    client.on("close", () => {
+      console.warn("[MQTT] Connection closed");
+      setStatus(false, "MQTT DISCONNECTED");
+    });
+
+    client.on("error", error => {
+      console.error("[MQTT] Error:", error);
+      setStatus(false, "CONNECTION ERROR");
+    });
+
+    button.addEventListener("click", () => {
+      if (!client.connected) {
+        console.warn("[MQTT] Not connected");
+        return;
+      }
+      playSound();
+      const messages = [
+        "Thank you for annoying me ",
+        "You again?! 🙄",
+        "I was having a peaceful day...",
+        "WHY WOULD YOU DO THAT ",
+        "Let me have some Peace",
+        "Bro has too much free time ",
+        "I will remembers this.",
+        "What a Achievement Bro!!",
+        "Congratulations. You've annoyed a me.",
+        "I hate you.",
+        "No wonder why You need therapy.",
+        "STOP It.",
+        "Fine. Have it your way.",
+        "Your actions have consequences.",
+        "Sadist — someone who derives pleasure from others' suffering or distress",
+        "I'm adding you to my enemies list."
+      ];
+
+      const randomMessage = messages[
+        Math.floor(Math.random() * messages.length)
+      ];
+
+      alert(randomMessage);
+      const payload = JSON.stringify({ trigger: true });
+      console.log("[MQTT] Publishing:", TOPIC, payload);
+
+      button.disabled = true;
+      feedback.textContent = "Sending trigger...";
+
+      client.publish(TOPIC, payload, { qos: 0, retain: false }, error => {
+        button.disabled = !client.connected;
+
+        if (error) {
+          console.error("[MQTT] Publish error:", error);
+          feedback.textContent = "Failed to publish command.";
+        } else {
+          console.log("[MQTT] Publish completed");
+          feedback.textContent = "Alarm command sent.";
+        }
+      });
+    });
+  </script>
+</body>
+</html>
