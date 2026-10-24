@@ -4,11 +4,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Your Clock. Your Rules.</title>
+  <title>Shock Clock</title>
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
   <style>
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
 
     body {
       margin: 0;
@@ -39,10 +41,17 @@
       height: 9px;
       background: #e53935;
       border-radius: 50%;
+      transition: background .2s;
     }
 
-    h1 { font-size: clamp(25px, 5vw, 36px); }
-    .subtitle { color: #a7b5c2; margin-bottom: 38px; }
+    h1 {
+      font-size: clamp(25px, 5vw, 36px);
+    }
+
+    .subtitle {
+      color: #a7b5c2;
+      margin-bottom: 38px;
+    }
 
     #trigger {
       width: 220px;
@@ -55,21 +64,48 @@
       font-weight: bold;
       cursor: pointer;
       box-shadow: 0 10px 35px #e5393533;
-      transition: transform .15s, background .15s;
+      transition:
+        transform .15s ease,
+        background .15s,
+        box-shadow .15s;
+      -webkit-tap-highlight-color: transparent;
     }
 
     #trigger:hover:not(:disabled) {
       background: #f44336;
       transform: scale(1.03);
+      box-shadow: 0 12px 45px #e5393566;
     }
 
-    #trigger:active:not(:disabled) {
-      transform: scale(.96);
+    #trigger:active:not(:disabled),
+    #trigger.pressing {
+      transform: scale(.88);
+      background: #b71c1c;
+      box-shadow: 0 0 45px #e5393588;
     }
 
     #trigger:disabled {
-      opacity: .4;
+      opacity: .5;
       cursor: not-allowed;
+    }
+
+    @keyframes rebound {
+      0% {
+        transform: scale(.88);
+      }
+      45% {
+        transform: scale(1.08);
+      }
+      70% {
+        transform: scale(.97);
+      }
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    #trigger.rebound {
+      animation: rebound .3s ease-out;
     }
 
     #feedback {
@@ -78,22 +114,108 @@
       color: #a7b5c2;
       font-size: 14px;
     }
+
+    /* Popup */
+
+    #popupOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: #000000bb;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity .2s, visibility .2s;
+    }
+
+    #popupOverlay.show {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    #popup {
+      width: 100%;
+      max-width: 360px;
+      padding: 30px 24px;
+      border: 1px solid #e5393555;
+      border-radius: 18px;
+      background: #17232e;
+      box-shadow: 0 15px 60px #0009;
+      transform: translateY(18px) scale(.94);
+      transition: transform .25s ease;
+    }
+
+    #popupOverlay.show #popup {
+      transform: translateY(0) scale(1);
+    }
+
+    #popupMessage {
+      font-size: 19px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    #popupCount {
+      margin-top: 14px;
+      color: #a7b5c2;
+      font-size: 12px;
+      letter-spacing: 1px;
+    }
+
+    #popupClose {
+      width: 100%;
+      margin-top: 24px;
+      padding: 13px;
+      border: none;
+      border-radius: 9px;
+      background: #e53935;
+      color: white;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background .15s, transform .15s;
+    }
+
+    #popupClose:hover {
+      background: #f44336;
+    }
+
+    #popupClose:active {
+      transform: scale(.97);
+    }
   </style>
 </head>
+
 <body>
   <div id="status">
     <span id="dot"></span>
     <span id="statusText">CONNECTING TO MQTT...</span>
   </div>
 
-  <h1>YOUR CLOCK. YOUR RULES.</h1>
-  <div class="subtitle">Remote alarm control</div>
+  <h1>Alarm Button</h1>
+  <div class="subtitle"></div>
 
   <button id="trigger" disabled>
-    ⏰<br><br>TRIGGER<br>ALARM
+    Press 
   </button>
 
   <div id="feedback">Connecting to broker...</div>
+
+  <div id="popupOverlay"
+       role="dialog"
+       aria-modal="true"
+       aria-labelledby="popupMessage">
+
+    <div id="popup">
+      <div id="popupMessage"></div>
+      <div id="popupCount"></div>
+      <button id="popupClose">CLOSE</button>
+    </div>
+
+  </div>
 
   <script>
     const BROKER = "wss://broker.hivemq.com:8884/mqtt";
@@ -104,6 +226,35 @@
     const button = document.getElementById("trigger");
     const feedback = document.getElementById("feedback");
 
+    const overlay = document.getElementById("popupOverlay");
+    const popupMessage = document.getElementById("popupMessage");
+    const popupCount = document.getElementById("popupCount");
+    const popupClose = document.getElementById("popupClose");
+
+    let pressCount = 0;
+    let busy = false;
+    let pendingTrigger = false;
+
+    // Original messages, displayed in order.
+    const messages = [
+      "Thank you for annoying me ",
+      "You again?! 🙄",
+      "I was having a peaceful day...",
+      "WHY WOULD YOU DO THAT ",
+      "Let me have some Peace",
+      "Bro has too much free time ",
+      "I will remembers this.",
+      "What a Achievement Bro!!",
+      "Congratulations. You've annoyed a me.",
+      "I hate you.",
+      "No wonder why You need therapy.",
+      "STOP It.",
+      "Fine. Have it your way.",
+      "Your actions have consequences.",
+      "Sadist — someone who derives pleasure from others' suffering or distress",
+      "I'm adding you to my enemies list."
+    ];
+
     const client = mqtt.connect(BROKER, {
       clientId: "snapclock_web_" +
         Math.random().toString(16).slice(2, 10),
@@ -112,8 +263,21 @@
       reconnectPeriod: 3000
     });
 
+    function setStatus(connected, text) {
+      statusText.textContent = text;
+      statusText.style.color =
+        connected ? "#72f1b8" : "#ff6b6b";
+
+      dot.style.background =
+        connected ? "#72f1b8" : "#e53935";
+
+      button.disabled = !connected || busy;
+    }
+
     function playSound() {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const audioCtx = new (
+        window.AudioContext || window.webkitAudioContext
+      )();
 
       const oscillator = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
@@ -121,18 +285,22 @@
       oscillator.connect(gain);
       gain.connect(audioCtx.destination);
 
-      // Dark, descending electronic sound
       oscillator.type = "sawtooth";
-      oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
-      oscillator.frequency.exponentialRampToValueAtTime(
-        100,
-        audioCtx.currentTime + 0.35
+
+      oscillator.frequency.setValueAtTime(
+        600, audioCtx.currentTime
       );
 
-      gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(
+        100, audioCtx.currentTime + 0.35
+      );
+
+      gain.gain.setValueAtTime(
+        0.35, audioCtx.currentTime
+      );
+
       gain.gain.exponentialRampToValueAtTime(
-        0.001,
-        audioCtx.currentTime + 0.35
+        0.001, audioCtx.currentTime + 0.35
       );
 
       oscillator.start();
@@ -140,17 +308,133 @@
 
       oscillator.onended = () => audioCtx.close();
     }
-      function setStatus(connected, text) {
-        statusText.textContent = text;
-        statusText.style.color = connected ? "#72f1b8" : "#ff6b6b";
-        dot.style.background = connected ? "#72f1b8" : "#e53935";
-        button.disabled = !connected;
+
+    function showPopup() {
+      // Show messages sequentially, then repeat the final one.
+      const index = Math.min(
+        pressCount - 1,
+        messages.length - 1
+      );
+
+      popupMessage.textContent = messages[index];
+      
+
+      overlay.classList.add("show");
+
+      setTimeout(() => popupClose.focus(), 100);
     }
+
+    function publishTrigger() {
+      if (!client.connected) {
+        feedback.textContent =
+          "Disconnected. Alarm command was not sent.";
+        return;
+      }
+
+      const payload = JSON.stringify({
+        trigger: true
+      });
+
+      feedback.textContent = "Sending trigger...";
+
+      client.publish(
+        TOPIC,
+        payload,
+        {
+          qos: 0,
+          retain: false
+        },
+        error => {
+          if (error) {
+            console.error("[MQTT] Publish error:", error);
+            feedback.textContent =
+              "Failed to publish command.";
+          } else {
+            console.log(
+              "[MQTT] Published:", TOPIC, payload
+            );
+
+            feedback.textContent =
+              "Alarm command sent.";
+          }
+        }
+      );
+    }
+
+    button.addEventListener("click", () => {
+      if (!client.connected || busy) return;
+
+      busy = true;
+      pendingTrigger = true;
+      pressCount++;
+
+      button.disabled = true;
+
+      // Start the button press animation.
+      button.classList.remove("rebound");
+      button.classList.add("pressing");
+
+      playSound();
+
+      feedback.textContent = "Sending your clock a message...";
+
+      // Hold the pressed state briefly.
+      setTimeout(() => {
+        button.classList.remove("pressing");
+        button.classList.add("rebound");
+
+        // Allow the rebound animation to start.
+        setTimeout(() => {
+          button.classList.remove("rebound");
+
+          // Small delay before showing the popup.
+          setTimeout(() => {
+            showPopup();
+          }, 300);
+
+        }, 150);
+
+      }, 180);
+    });
+
+    function closePopup() {
+      if (!overlay.classList.contains("show")) return;
+
+      overlay.classList.remove("show");
+
+      setTimeout(() => {
+        // Send the alarm command after the popup closes.
+        if (pendingTrigger) {
+          pendingTrigger = false;
+          publishTrigger();
+        }
+
+        busy = false;
+        button.disabled = !client.connected;
+      }, 220);
+    }
+
+    popupClose.addEventListener("click", closePopup);
+
+    overlay.addEventListener("click", event => {
+      if (event.target === overlay) {
+        closePopup();
+      }
+    });
+
+    document.addEventListener("keydown", event => {
+      if (
+        event.key === "Escape" &&
+        overlay.classList.contains("show")
+      ) {
+        closePopup();
+      }
+    });
 
     client.on("connect", () => {
       console.log("[MQTT] Connected:", BROKER);
       setStatus(true, "MQTT CONNECTED");
-      feedback.textContent = "Ready to control your clock.";
+      feedback.textContent = "Now you can press it!";
     });
 
     client.on("reconnect", () => {
@@ -171,55 +455,6 @@
     client.on("error", error => {
       console.error("[MQTT] Error:", error);
       setStatus(false, "CONNECTION ERROR");
-    });
-
-    button.addEventListener("click", () => {
-      if (!client.connected) {
-        console.warn("[MQTT] Not connected");
-        return;
-      }
-      playSound();
-      const messages = [
-        "Thank you for annoying me ",
-        "You again?! 🙄",
-        "I was having a peaceful day...",
-        "WHY WOULD YOU DO THAT ",
-        "Let me have some Peace",
-        "Bro has too much free time ",
-        "I will remembers this.",
-        "What a Achievement Bro!!",
-        "Congratulations. You've annoyed a me.",
-        "I hate you.",
-        "No wonder why You need therapy.",
-        "STOP It.",
-        "Fine. Have it your way.",
-        "Your actions have consequences.",
-        "Sadist — someone who derives pleasure from others' suffering or distress",
-        "I'm adding you to my enemies list."
-      ];
-
-      const randomMessage = messages[
-        Math.floor(Math.random() * messages.length)
-      ];
-
-      alert(randomMessage);
-      const payload = JSON.stringify({ trigger: true });
-      console.log("[MQTT] Publishing:", TOPIC, payload);
-
-      button.disabled = true;
-      feedback.textContent = "Sending trigger...";
-
-      client.publish(TOPIC, payload, { qos: 0, retain: false }, error => {
-        button.disabled = !client.connected;
-
-        if (error) {
-          console.error("[MQTT] Publish error:", error);
-          feedback.textContent = "Failed to publish command.";
-        } else {
-          console.log("[MQTT] Publish completed");
-          feedback.textContent = "Alarm command sent.";
-        }
-      });
     });
   </script>
 </body>
