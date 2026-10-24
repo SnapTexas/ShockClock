@@ -112,11 +112,39 @@
       reconnectPeriod: 3000
     });
 
-    function setStatus(connected, text) {
-      statusText.textContent = text;
-      statusText.style.color = connected ? "#72f1b8" : "#ff6b6b";
-      dot.style.background = connected ? "#72f1b8" : "#e53935";
-      button.disabled = !connected;
+    function playSound() {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+      const oscillator = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      oscillator.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      // Dark, descending electronic sound
+      oscillator.type = "sawtooth";
+      oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(
+        100,
+        audioCtx.currentTime + 0.35
+      );
+
+      gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(
+        0.001,
+        audioCtx.currentTime + 0.35
+      );
+
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.35);
+
+      oscillator.onended = () => audioCtx.close();
+    }
+      function setStatus(connected, text) {
+        statusText.textContent = text;
+        statusText.style.color = connected ? "#72f1b8" : "#ff6b6b";
+        dot.style.background = connected ? "#72f1b8" : "#e53935";
+        button.disabled = !connected;
     }
 
     client.on("connect", () => {
@@ -150,7 +178,31 @@
         console.warn("[MQTT] Not connected");
         return;
       }
+      playSound();
+      const messages = [
+        "Thank you for annoying me ",
+        "You again?! 🙄",
+        "I was having a peaceful day...",
+        "WHY WOULD YOU DO THAT ",
+        "Let me have some Peace",
+        "Bro has too much free time ",
+        "I will remembers this.",
+        "What a Achievement Bro!!",
+        "Congratulations. You've annoyed a me.",
+        "I hate you.",
+        "No wonder why You need therapy.",
+        "STOP It.",
+        "Fine. Have it your way.",
+        "Your actions have consequences.",
+        "Sadist — someone who derives pleasure from others' suffering or distress",
+        "I'm adding you to my enemies list."
+      ];
 
+      const randomMessage = messages[
+        Math.floor(Math.random() * messages.length)
+      ];
+
+      alert(randomMessage);
       const payload = JSON.stringify({ trigger: true });
       console.log("[MQTT] Publishing:", TOPIC, payload);
 
