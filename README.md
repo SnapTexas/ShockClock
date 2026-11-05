@@ -1,5 +1,11 @@
 # ShockClock
+<p align="center">
+  <img src="assets/shockclock.jpg" alt="ShockClock - ESP32 Alarm Clock" width="600">
+</p>
 
+<p align="center">
+  An ESP32-powered alarm clock with OLED display, LED matrix animations, and web-based controls.
+</p>
 **Your Clock. Your Rules.**
 
 ShockClock is an experimental ESP32-based smart alarm clock that combines embedded systems, hardware prototyping, web technologies, and MQTT communication.
