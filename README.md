@@ -1,6 +1,6 @@
 # ShockClock
 <p align="center">
-  <img src="assets/shockclock.jpg" alt="ShockClock - ESP32 Alarm Clock" width="600">
+  <img src="assets/shockclock.jpeg" alt="ShockClock - ESP32 Alarm Clock" width="600">
 </p>
 
 <p align="center">
